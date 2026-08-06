@@ -145,6 +145,11 @@ function carregarViaFetch() {
 function carregarViaJsonp() {
   return new Promise((res, rej) => {
     const timer = setTimeout(() => rej(new Error("tempo esgotado")), 20000);
+    const handler = (data) => window.handleGviz(data);
+    window.google = window.google || {};
+    window.google.visualization = window.google.visualization || {};
+    window.google.visualization.Query = window.google.visualization.Query || {};
+    window.google.visualization.Query.setResponse = handler;
     window.handleGviz = (data) => {
       clearTimeout(timer);
       try {
