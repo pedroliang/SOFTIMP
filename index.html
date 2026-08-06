@@ -121,24 +121,59 @@ function parseCSV(text) {
   return rows;
 }
 
+const SHEET_JSONP = "https://docs.google.com/spreadsheets/d/1fRqUo8vH4awjCwV12U0fhR2bdBSRGFUVMlU8PozUsoQ/gviz/tq?gid=1382622657&tqx=out:json;responseHandler:handleGviz";
+
+function montarMapa(pares) {
+  mapa = {};
+  let n = 0;
+  for (const [soft, original] of pares) {
+    if (soft && original && soft !== "SOFT" && !(original in mapa)) { mapa[original] = soft; n++; }
+  }
+  return n;
+}
+
+function carregarViaFetch() {
+  return fetch(SHEET_URL).then(r => {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.text();
+  }).then(t => {
+    const rows = parseCSV(t);
+    return montarMapa(rows.map(r => [(r[0] || "").trim(), (r[1] || "").trim()]));
+  });
+}
+
+function carregarViaJsonp() {
+  return new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error("tempo esgotado")), 20000);
+    window.handleGviz = (data) => {
+      clearTimeout(timer);
+      try {
+        const val = c => c == null ? "" : String(c.f != null ? c.f : (c.v != null ? c.v : "")).trim();
+        const pares = (data.table.rows || []).map(r => [val(r.c[0]), val(r.c[1])]);
+        res(montarMapa(pares));
+      } catch (e) { rej(e); }
+    };
+    const s = document.createElement("script");
+    s.src = SHEET_JSONP;
+    s.onerror = () => { clearTimeout(timer); rej(new Error("falha ao carregar script")); };
+    document.head.appendChild(s);
+  });
+}
+
 async function carregarBase() {
   const st = document.getElementById("dbStatus");
+  let n;
   try {
-    const resp = await fetch(SHEET_URL);
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    const rows = parseCSV(await resp.text());
-    mapa = {};
-    let n = 0;
-    for (let i = 1; i < rows.length; i++) { // pula cabecalho SOFT,ORIGINAL
-      const soft = (rows[i][0] || "").trim();
-      const original = (rows[i][1] || "").trim();
-      if (soft && original && !(original in mapa)) { mapa[original] = soft; n++; }
+    n = await carregarViaFetch();
+  } catch (e1) {
+    try { n = await carregarViaJsonp(); }
+    catch (e2) {
+      st.innerHTML = '<span class="err">Erro ao carregar a planilha (' + e1.message + ' / ' + e2.message + '). Verifique a internet e se a planilha está compartilhada como "qualquer pessoa com o link".</span>';
+      return;
     }
-    st.innerHTML = '<span class="ok">Planilha carregada: ' + n + ' SKUs na base.</span>';
-    document.getElementById("btnProcessar").disabled = false;
-  } catch (e) {
-    st.innerHTML = '<span class="err">Erro ao carregar a planilha: ' + e.message + '. Verifique se ela está compartilhada como "qualquer pessoa com o link".</span>';
   }
+  st.innerHTML = '<span class="ok">Planilha carregada: ' + n + ' SKUs na base.</span>';
+  document.getElementById("btnProcessar").disabled = false;
 }
 carregarBase();
 
