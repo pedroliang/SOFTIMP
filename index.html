@@ -225,15 +225,40 @@ document.getElementById("btnProcessar").addEventListener("click", async () => {
   let inicio = 0;
   if (dados.length && dados[0].length >= 2 && isNaN(parseFloat(String(dados[0][1]).replace(",", ".")))) inicio = 1;
 
+  // monta lista limpa
+  let itens = [];
+  for (let i = inicio; i < dados.length; i++) {
+    const sku = String(dados[i][0] || "").trim();
+    const qtd = String(dados[i][1] || "").trim();
+    if (!sku && !qtd) continue;
+    itens.push([sku, qtd]);
+  }
+
+  // detecta SKUs duplicados
+  const cont = {};
+  for (const [sku] of itens) cont[sku] = (cont[sku] || 0) + 1;
+  const dups = Object.keys(cont).filter(s => cont[s] > 1);
+  if (dups.length) {
+    const msg = "Atenção: há SKUs repetidos na lista:\n\n" +
+      dups.map(s => "SKU " + s + " (" + cont[s] + " vezes)").join("\n") +
+      "\n\nDeseja JUNTAR as quantidades para ficar apenas uma linha por SKU?\n\nOK = somar quantidades  |  Cancelar = manter repetidos";
+    if (confirm(msg)) {
+      const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
+      const somas = {}, ordem = [];
+      for (const [sku, qtd] of itens) {
+        if (!(sku in somas)) { somas[sku] = 0; ordem.push(sku); }
+        somas[sku] += num(qtd);
+      }
+      itens = ordem.map(sku => [sku, String(somas[sku] % 1 === 0 ? somas[sku] : somas[sku].toFixed(2).replace(".", ","))]);
+    }
+  }
+
   const tbody = document.querySelector("#tabela tbody");
   tbody.innerHTML = "";
   linhasTxt = [];
   let encontrados = 0, naoEncontrados = [];
 
-  for (let i = inicio; i < dados.length; i++) {
-    const sku = String(dados[i][0] || "").trim();
-    const qtd = String(dados[i][1] || "").trim();
-    if (!sku && !qtd) continue;
+  for (const [sku, qtd] of itens) {
     const soft = mapa[sku];
     const tr = document.createElement("tr");
     if (soft) {
